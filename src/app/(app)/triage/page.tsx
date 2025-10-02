@@ -212,24 +212,33 @@ export default function TriagePage() {
 
   React.useEffect(() => {
     if (!allIssues) return;
-
+  
     const updates: (Partial<Issue> & { id: string })[] = [];
-
+  
     allIssues.forEach(issue => {
-      if (issue.status === 'Pending') {
-        const greenFlags = issue.greenFlags ?? 0;
-        const redFlags = issue.redFlags ?? 0;
-        
-        if (greenFlags > 25 || redFlags > 25) {
-          if (greenFlags > redFlags) {
-            updates.push({ id: issue.id, status: 'Approved' });
-          } else if (redFlags > greenFlags) {
-            updates.push({ id: issue.id, status: 'Rejected' });
-          }
+      // Apply logic to Pending, Approved, and Rejected issues that are not yet in progress or resolved.
+      const relevantStatuses: Array<Issue['status']> = ['Pending', 'Approved', 'Rejected'];
+      if (!relevantStatuses.includes(issue.status)) {
+        return;
+      }
+  
+      const greenFlags = issue.greenFlags ?? 0;
+      const redFlags = issue.redFlags ?? 0;
+  
+      // Only trigger if a threshold has been crossed
+      if (greenFlags > 25 || redFlags > 25) {
+        // If green flags are more, and the issue is not already Approved, approve it.
+        if (greenFlags > redFlags && issue.status !== 'Approved') {
+          updates.push({ id: issue.id, status: 'Approved' });
+        } 
+        // If red flags are more, and the issue is not already Rejected, reject it.
+        else if (redFlags > greenFlags && issue.status !== 'Rejected') {
+          updates.push({ id: issue.id, status: 'Rejected' });
         }
+        // If flags are equal, we don't change the status. It might need manual review.
       }
     });
-
+  
     if (updates.length > 0) {
       updateIssues(updates);
     }
