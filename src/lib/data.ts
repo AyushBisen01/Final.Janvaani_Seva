@@ -14,14 +14,10 @@ const capitalize = (s: string) => s && s.charAt(0).toUpperCase() + s.slice(1);
 
 // Functions to interact with the real database
 export async function getIssues(): Promise<Issue[]> {
+  const placeholderIssues = _getIssues();
   try {
     await dbConnect();
     
-    // --- START: AUTO-APPROVAL/REJECTION LOGIC ---
-    // This logic has been removed as per your request.
-    // --- END: AUTO-APPROVAL/REJECTION LOGIC ---
-
-    // Aggregate to get flag counts and reasons
     const realIssues = await IssueModel.aggregate([
       {
         $lookup: {
@@ -82,15 +78,14 @@ export async function getIssues(): Promise<Issue[]> {
       }
     ]);
 
-    // Map issues to the format expected by the frontend
     const mappedIssues = realIssues.map((issue) => {
       const issueIdString = issue._id.toString();
       
       let status = capitalize(issue.status || 'Pending');
-      if (issue.status === 'inProgress' || issue.status === 'inprogress') {
+       if (issue.status === 'inProgress' || issue.status === 'inprogress') {
         status = 'inProgress';
       }
-      if (issue.status === 'approved') {
+       if (issue.status === 'approved') {
         status = 'Approved';
       }
 
@@ -104,41 +99,41 @@ export async function getIssues(): Promise<Issue[]> {
           lng: issue.coordinates?.longitude || 0,
         },
         status: status as any,
-        priority: issue.priority || 'Medium', // Default priority
+        priority: issue.priority || 'Medium',
         reportedAt: issue.createdAt,
         resolvedAt: issue.resolvedAt,
-        assignedTo: issue.assignedTo, // Use assignedTo from DB
+        assignedTo: issue.assignedTo,
         citizen: {
           name: issue.user?.name || issue.submittedBy || 'Unknown',
           contact: issue.user?.email || 'N/A',
         },
-        imageUrl: issue.imageUrl || '', // Use the imageUrl from the issue itself
-        imageHint: issue.title, // Use title as a hint
+        imageUrl: issue.imageUrl || '',
+        imageHint: issue.title,
         proofUrl: issue.proofUrl,
         proofHint: issue.proofHint,
-        greenFlags: issue.greenFlags || 0, // Directly from issues collection
-        redFlags: issue.redFlags || 0,     // Directly from issues collection
+        greenFlags: issue.greenFlags || 0,
+        redFlags: issue.redFlags || 0,
         redFlagReasons: issue.redFlagReasons?.filter((r: any) => r.reason) || [],
         statusHistory: issue.statusHistory && issue.statusHistory.length > 0 
           ? issue.statusHistory.map(h => ({ status: capitalize(h.status), date: h.date }))
-          : [{ status: capitalize(issue.status || 'Pending'), date: issue.createdAt }] // Create default history
+          : [{ status: capitalize(issue.status || 'Pending'), date: issue.createdAt }]
       };
     });
     
-    if (mappedIssues.length === 0) {
-      console.log("No real issues found, falling back to placeholder data.");
-      return _getIssues();
-    }
+    // Combine real and placeholder data, ensuring no duplicates
+    const realIssueIds = new Set(mappedIssues.map(i => i.id));
+    const uniquePlaceholderIssues = placeholderIssues.filter(p => !realIssueIds.has(p.id));
     
-    return mappedIssues;
+    return [...mappedIssues, ...uniquePlaceholderIssues];
 
   } catch (error) {
-    console.error("Error fetching issues from DB, falling back to placeholder data:", error);
-    return _getIssues();
+    console.error("Error fetching issues from DB, returning only placeholder data:", error);
+    return placeholderIssues;
   }
 }
 
 export async function getUsers(): Promise<User[]> {
+   const placeholderUsers = _getUsers();
    try {
     await dbConnect();
     const realUsers = await UserModel.find({}).lean();
@@ -152,16 +147,15 @@ export async function getUsers(): Promise<User[]> {
       department: user.department,
     }));
     
-    if (mappedUsers.length === 0) {
-        console.log("No real users found, falling back to placeholder data.");
-        return _getUsers();
-    }
-    
-    return mappedUsers;
+    // Combine real and placeholder data, ensuring no duplicates
+    const realUserEmails = new Set(mappedUsers.map(u => u.email));
+    const uniquePlaceholderUsers = placeholderUsers.filter(p => !realUserEmails.has(p.email));
+
+    return [...mappedUsers, ...uniquePlaceholderUsers];
 
   } catch (error) {
-    console.error("Error fetching users from DB, falling back to placeholder data:", error);
-    return _getUsers();
+    console.error("Error fetching users from DB, returning only placeholder data:", error);
+    return placeholderUsers;
   }
 }
 
