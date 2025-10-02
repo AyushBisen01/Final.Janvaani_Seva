@@ -56,8 +56,8 @@ export async function getIssues(): Promise<Issue[]> {
         updateMany: {
           filter: { _id: { $in: issuesToApprove } },
           update: { 
-            $set: { status: 'Approved' },
-            $push: { statusHistory: { status: 'Approved', date: new Date(), notes: 'Auto-approved by crowd consensus.' } }
+            $set: { status: 'approved' },
+            $push: { statusHistory: { status: 'approved', date: new Date(), notes: 'Auto-approved by crowd consensus.' } }
           }
         }
       });
@@ -255,6 +255,9 @@ export async function updateIssue(id: string, updates: Partial<Issue>) {
         
         if (updates.status) {
             let newStatus = updates.status;
+            if (newStatus.toLowerCase() === 'approved') {
+                newStatus = 'approved';
+            }
             const currentStatus = (issueToUpdate.status || 'Pending');
 
             if (newStatus !== currentStatus) {
@@ -293,6 +296,9 @@ export async function updateMultipleIssues(updates: (Partial<Issue> & {id: strin
             
             if (updateData.status) {
                 let newStatus = updateData.status;
+                 if (newStatus.toLowerCase() === 'approved') {
+                    newStatus = 'approved';
+                 }
                  setOp.status = newStatus;
                  pushOp.statusHistory = { status: newStatus, date: new Date() };
             }
