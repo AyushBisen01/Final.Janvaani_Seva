@@ -18,65 +18,7 @@ export async function getIssues(): Promise<Issue[]> {
     await dbConnect();
     
     // --- START: AUTO-APPROVAL/REJECTION LOGIC ---
-    const approvalThreshold = 20;
-    const rejectionThreshold = 20;
-
-    const pendingIssuesForTriage = await IssueModel.aggregate([
-      { $match: { status: 'Pending' } },
-      {
-        $lookup: {
-          from: 'flags',
-          localField: '_id',
-          foreignField: 'issueId',
-          as: 'flags'
-        }
-      },
-      {
-        $addFields: {
-          greenFlags: { $size: { $filter: { input: '$flags', as: 'flag', cond: { $eq: ['$$flag.type', 'green'] } } } },
-          redFlags: { $size: { $filter: { input: '$flags', as: 'flag', cond: { $eq: ['$$flag.type', 'red'] } } } }
-        }
-      },
-      {
-        $match: {
-          $or: [
-            { greenFlags: { $gte: approvalThreshold } },
-            { redFlags: { $gte: rejectionThreshold } }
-          ]
-        }
-      }
-    ]);
-
-    const issuesToApprove = pendingIssuesForTriage.filter(i => i.greenFlags >= approvalThreshold).map(i => i._id);
-    const issuesToReject = pendingIssuesForTriage.filter(i => i.redFlags >= rejectionThreshold).map(i => i._id);
-    
-    const bulkOps = [];
-    if (issuesToApprove.length > 0) {
-      bulkOps.push({
-        updateMany: {
-          filter: { _id: { $in: issuesToApprove } },
-          update: { 
-            $set: { status: 'approved' },
-            $push: { statusHistory: { status: 'approved', date: new Date(), notes: 'Auto-approved by crowd consensus.' } }
-          }
-        }
-      });
-    }
-    if (issuesToReject.length > 0) {
-       bulkOps.push({
-        updateMany: {
-          filter: { _id: { $in: issuesToReject } },
-          update: { 
-            $set: { status: 'Rejected' },
-            $push: { statusHistory: { status: 'Rejected', date: new Date(), notes: 'Auto-rejected by crowd consensus.' } }
-          }
-        }
-      });
-    }
-
-    if (bulkOps.length > 0) {
-      await IssueModel.bulkWrite(bulkOps);
-    }
+    // This logic has been removed as per your request.
     // --- END: AUTO-APPROVAL/REJECTION LOGIC ---
 
     // Aggregate to get flag counts and reasons
@@ -100,7 +42,14 @@ export async function getIssues(): Promise<Issue[]> {
           from: 'flags', // The collection name for FlagModel
           let: { issue_id: "$_id" },
           pipeline: [
-            { $match: { $expr: { $eq: ["$issueId", "$$issue_id"] } } },
+            { $match: 
+              { $expr: 
+                { $and: [
+                  { $eq: ["$issueId", "$$issue_id"] },
+                  { $eq: ["$type", "red"] }
+                ]}
+              }
+            },
             {
               $lookup: {
                 from: 'users',
@@ -111,38 +60,14 @@ export async function getIssues(): Promise<Issue[]> {
             },
             { $unwind: '$flagger' }
           ],
-          as: 'flags'
+          as: 'red_flags_with_reasons'
         }
       },
       {
         $addFields: {
-          greenFlags: {
-            $size: {
-              $filter: {
-                input: '$flags',
-                as: 'flag',
-                cond: { $eq: ['$$flag.type', 'green'] }
-              }
-            }
-          },
-          redFlags: {
-            $size: {
-              $filter: {
-                input: '$flags',
-                as: 'flag',
-                cond: { $eq: ['$$flag.type', 'red'] }
-              }
-            }
-          },
           redFlagReasons: {
             $map: {
-              input: {
-                $filter: {
-                  input: '$flags',
-                  as: 'flag',
-                  cond: { $eq: ['$$flag.type', 'red'] }
-                }
-              },
+              input: '$red_flags_with_reasons',
               as: 'redFlag',
               in: {
                 reason: '$$redFlag.reason',
@@ -162,8 +87,8 @@ export async function getIssues(): Promise<Issue[]> {
       const issueIdString = issue._id.toString();
       
       let status = capitalize(issue.status || 'Pending');
-      if (issue.status === 'inProgress') { // Match "inProgress" from DB
-        status = 'Assigned';
+      if (issue.status === 'inProgress' || issue.status === 'inprogress') {
+        status = 'In Progress';
       }
       if (issue.status === 'approved') {
         status = 'Approved';
@@ -191,22 +116,21 @@ export async function getIssues(): Promise<Issue[]> {
         imageHint: issue.title, // Use title as a hint
         proofUrl: issue.proofUrl,
         proofHint: issue.proofHint,
-        greenFlags: issue.greenFlags || 0,
-        redFlags: issue.redFlags || 0,
+        greenFlags: issue.greenFlags || 0, // Directly from issues collection
+        redFlags: issue.redFlags || 0,     // Directly from issues collection
         redFlagReasons: issue.redFlagReasons?.filter((r: any) => r.reason) || [],
         statusHistory: issue.statusHistory && issue.statusHistory.length > 0 
           ? issue.statusHistory.map(h => ({ status: capitalize(h.status), date: h.date }))
           : [{ status: capitalize(issue.status || 'Pending'), date: issue.createdAt }] // Create default history
       };
     });
-
-    const placeholderIssues = _getIssues();
     
-    // Combine and remove duplicates, giving preference to real issues
-    const combined = [...mappedIssues, ...placeholderIssues];
-    const uniqueIssues = combined.filter((v,i,a)=>a.findIndex(t=>(t.id === v.id))===i)
+    if (mappedIssues.length === 0) {
+      console.log("No real issues found, falling back to placeholder data.");
+      return _getIssues();
+    }
     
-    return uniqueIssues;
+    return mappedIssues;
 
   } catch (error) {
     console.error("Error fetching issues from DB, falling back to placeholder data:", error);
@@ -228,12 +152,11 @@ export async function getUsers(): Promise<User[]> {
       department: user.department,
     }));
     
-    const placeholderUsers = _getUsers();
-
-    const combined = [...mappedUsers, ...placeholderUsers];
-    const uniqueUsers = combined.filter((v,i,a)=>a.findIndex(t=>(t.id === v.id))===i)
+    if (mappedUsers.length === 0) {
+        return _getUsers();
+    }
     
-    return uniqueUsers;
+    return mappedUsers;
 
   } catch (error) {
     console.error("Error fetching users from DB, falling back to placeholder data:", error);
@@ -254,11 +177,8 @@ export async function updateIssue(id: string, updates: Partial<Issue>) {
         const updateOp: any = { $set: {} };
         
         if (updates.status) {
-            let newStatus = updates.status;
-            if (newStatus.toLowerCase() === 'approved') {
-                newStatus = 'approved';
-            }
-            const currentStatus = (issueToUpdate.status || 'Pending');
+            let newStatus = updates.status.toLowerCase();
+            const currentStatus = (issueToUpdate.status || 'Pending').toLowerCase();
 
             if (newStatus !== currentStatus) {
                 updateOp.$set.status = newStatus;
@@ -295,10 +215,7 @@ export async function updateMultipleIssues(updates: (Partial<Issue> & {id: strin
             const pushOp: any = {};
             
             if (updateData.status) {
-                let newStatus = updateData.status;
-                 if (newStatus.toLowerCase() === 'approved') {
-                    newStatus = 'approved';
-                 }
+                let newStatus = updateData.status.toLowerCase();
                  setOp.status = newStatus;
                  pushOp.statusHistory = { status: newStatus, date: new Date() };
             }
