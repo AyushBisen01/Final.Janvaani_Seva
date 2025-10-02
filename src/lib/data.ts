@@ -88,7 +88,7 @@ export async function getIssues(): Promise<Issue[]> {
       
       let status = capitalize(issue.status || 'Pending');
       if (issue.status === 'inProgress' || issue.status === 'inprogress') {
-        status = 'In Progress';
+        status = 'inProgress';
       }
       if (issue.status === 'approved') {
         status = 'Approved';
@@ -153,6 +153,7 @@ export async function getUsers(): Promise<User[]> {
     }));
     
     if (mappedUsers.length === 0) {
+        console.log("No real users found, falling back to placeholder data.");
         return _getUsers();
     }
     
