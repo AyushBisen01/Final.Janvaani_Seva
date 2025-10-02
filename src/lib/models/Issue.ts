@@ -13,6 +13,7 @@ interface IIssue extends Document {
   status: string;
   priority: 'High' | 'Medium' | 'Low';
   imageUrl: string;
+  annotatedImageUrl?: string;
   submittedBy: string;
   createdAt: Date;
   updatedAt: Date;
@@ -37,6 +38,7 @@ const IssueSchema: Schema<IIssue> = new Schema({
   status: { type: String, default: 'pending' },
   priority: { type: String, enum: ['High', 'Medium', 'Low'], default: 'Medium' },
   imageUrl: String,
+  annotatedImageUrl: String,
   submittedBy: String,
   statusHistory: {
     type: [{

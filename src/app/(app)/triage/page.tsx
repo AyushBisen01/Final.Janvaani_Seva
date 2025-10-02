@@ -210,6 +210,27 @@ export default function TriagePage() {
     }
   }
 
+  React.useEffect(() => {
+    if (!allIssues) return;
+
+    const updates: (Partial<Issue> & { id: string })[] = [];
+
+    allIssues.forEach(issue => {
+      if (issue.status === 'Pending') {
+        if ((issue.greenFlags || 0) > 25) {
+          updates.push({ id: issue.id, status: 'Approved' });
+        } else if ((issue.redFlags || 0) > 25) {
+          updates.push({ id: issue.id, status: 'Rejected' });
+        }
+      }
+    });
+
+    if (updates.length > 0) {
+      updateIssues(updates);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allIssues]);
+
 
   if (isLoading || !allIssues) {
     return (
@@ -227,6 +248,8 @@ export default function TriagePage() {
 
   const pendingIssues = allIssues.filter((i) => i.status === 'Pending');
   const approvedIssues = allIssues.filter((i) => i.status === 'Approved');
+  const rejectedIssues = allIssues.filter((i) => i.status === 'Rejected');
+
 
   const handleApprove = (id: string) => {
     updateIssues([{ id, status: 'Approved' }]);
@@ -283,7 +306,7 @@ export default function TriagePage() {
     setSelectedIssues([]);
   }
 
-  const currentIssues = activeTab === 'pending' ? pendingIssues : approvedIssues;
+  const currentIssues = activeTab === 'pending' ? pendingIssues : activeTab === 'approved' ? approvedIssues : rejectedIssues;
   const issuesForBulkAssign = allIssues.filter(i => selectedIssues.includes(i.id));
 
   return (
@@ -308,9 +331,12 @@ export default function TriagePage() {
                 <TabsTrigger value="approved">
                   Auto-Approved ({approvedIssues.length})
                 </TabsTrigger>
+                 <TabsTrigger value="rejected">
+                  Auto-Rejected ({rejectedIssues.length})
+                </TabsTrigger>
               </TabsList>
               <div className="flex items-center gap-2">
-                <Button variant="outline" onClick={() => handleOpenAssignDialog(issuesForBulkAssign)} disabled={selectedIssues.length === 0}>
+                <Button variant="outline" onClick={() => handleOpenAssignDialog(issuesForBulkAssign)} disabled={selectedIssues.length === 0 || activeTab === 'rejected'}>
                   <Send className="mr-2 h-4 w-4" /> Bulk Assign ({selectedIssues.length})
                 </Button>
               </div>
@@ -329,6 +355,17 @@ export default function TriagePage() {
             <TabsContent value="approved" className="mt-0">
               <TriageDataTable
                 issues={approvedIssues}
+                selectedIssues={selectedIssues}
+                onSelectedChange={handleSelectedChange}
+                onApprove={handleApprove}
+                onReject={handleReject}
+                onAssign={handleOpenAssignDialog}
+                onView={handleView}
+              />
+            </TabsContent>
+            <TabsContent value="rejected" className="mt-0">
+               <TriageDataTable
+                issues={rejectedIssues}
                 selectedIssues={selectedIssues}
                 onSelectedChange={handleSelectedChange}
                 onApprove={handleApprove}
