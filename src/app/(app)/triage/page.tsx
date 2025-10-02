@@ -217,10 +217,15 @@ export default function TriagePage() {
 
     allIssues.forEach(issue => {
       if (issue.status === 'Pending') {
-        if ((issue.greenFlags || 0) > 25) {
-          updates.push({ id: issue.id, status: 'Approved' });
-        } else if ((issue.redFlags || 0) > 25) {
-          updates.push({ id: issue.id, status: 'Rejected' });
+        const greenFlags = issue.greenFlags ?? 0;
+        const redFlags = issue.redFlags ?? 0;
+        
+        if (greenFlags > 25 || redFlags > 25) {
+          if (greenFlags > redFlags) {
+            updates.push({ id: issue.id, status: 'Approved' });
+          } else if (redFlags > greenFlags) {
+            updates.push({ id: issue.id, status: 'Rejected' });
+          }
         }
       }
     });
